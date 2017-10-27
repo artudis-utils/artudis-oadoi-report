@@ -2,16 +2,16 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"encoding/csv"
+	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
-	"strconv"
 )
 
 type Record struct {
@@ -24,8 +24,14 @@ type Publication struct {
 		Scheme string `json:"scheme"`
 		Value  string `json:"value"`
 	} `json:"identifier"`
-	ID   string `json:"__id__"`
-	Type string `json:"type"`
+	ID         string `json:"__id__"`
+	Type       string `json:"type"`
+	Attachment []struct {
+		OpenAccess  string      `json:"open_access"`
+		BlobKey     string      `json:"blob_key"`
+		ExternalURL interface{} `json:"external_url"`
+		Type        string      `json:"type"`
+	} `json:"attachment"`
 }
 
 type APIResponse struct {
@@ -59,6 +65,14 @@ type APIResponseBody struct {
 }
 
 const OADOIURL string = "https://api.oadoi.org/v2/"
+
+var attachmentTypeToWeightMap = map[string]int{
+	"missing":             0,
+	"other":               1,
+	"submittedManuscript": 2,
+	"acceptedManuscript":  3,
+	"finalVersion":        4,
+}
 
 var email = flag.String("email", "", "Email to pass to the oaDOI API")
 var httplimit = flag.Int("httplimit", 5, "Number of HTTP requests that can run concurrently")
@@ -120,29 +134,65 @@ func processOutput(output <-chan Record, waitgroupOutput *sync.WaitGroup) {
 
 	w := csv.NewWriter(os.Stdout)
 
+	header := []string{"API - Available OA",
+		"Artudis - Available OA",
+		"Artudis - Best Type OA",
+		"Artudis - ID",
+		"API - Best OA Location URL",
+		"API - Best OA Location Version",
+		"Artudis - Publication Type",
+		"API - HTTP Response Status",
+		"API - JSON Decode Error",
+		"API - GET Error",
+		"API - DOI",
+		"API - Title",
+	}
+
+	err := w.Write(header)
+
 	for record := range output {
+
+		artudisOA := false
+		highestLevel := "missing"
+		for _, attachment := range record.Attachment {
+			if attachment.OpenAccess == "true" {
+				artudisOA = true
+				if attachmentTypeToWeightMap[attachment.Type] > attachmentTypeToWeightMap[highestLevel] {
+					highestLevel = attachment.Type
+				}
+			}
+		}
+
 		for _, apiresponse := range record.APIResponses {
 			toCSVOutput := []string{strconv.FormatBool(apiresponse.APIResponseBody.IsOa),
-									record.Publication.ID,
-									apiresponse.APIResponseBody.BestOaLocation.URL,
-									record.Publication.Type,
-									apiresponse.HTTPStatus,
-									apiresponse.JSONDecodeError,
-									apiresponse.GETError,
-									apiresponse.APIResponseBody.Doi,				
-									apiresponse.APIResponseBody.Title,				
-									apiresponse.APIResponseBody.BestOaLocation.Version}
+				strconv.FormatBool(artudisOA),
+				highestLevel,
+				record.Publication.ID,
+				apiresponse.APIResponseBody.BestOaLocation.URL,
+				apiresponse.APIResponseBody.BestOaLocation.Version,
+				record.Publication.Type,
+				apiresponse.HTTPStatus,
+				apiresponse.JSONDecodeError,
+				apiresponse.GETError,
+				apiresponse.APIResponseBody.Doi,
+				apiresponse.APIResponseBody.Title,
+			}
 
-			if err := w.Write(toCSVOutput); err != nil {
-			    log.Fatalln("error writing record to csv:", err)
-		    } 
+			err := w.Write(toCSVOutput)
+
+			if err != nil {
+				log.Println("error writing record to csv:", err)
+				return
+			}
 		}
 	}
 
 	w.Flush()
 
-	if err := w.Error(); err != nil {
-		log.Fatal(err)
+	err = w.Error()
+	if err != nil {
+		log.Println("error writing record to csv:", err)
+		return
 	}
 }
 
