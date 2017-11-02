@@ -134,18 +134,19 @@ func processOutput(output <-chan Record, waitgroupOutput *sync.WaitGroup) {
 
 	w := csv.NewWriter(os.Stdout)
 
-	header := []string{"API - Available OA",
+	header := []string{
+		"Artudis - ID",
+		"Artudis - Publication Type",
 		"Artudis - Available OA",
 		"Artudis - Best Type OA",
-		"Artudis - ID",
-		"API - Best OA Location URL",
+		"API - Available OA",
 		"API - Best OA Location Version",
-		"Artudis - Publication Type",
+		"API - DOI",
+		"API - Best OA Location URL",
+		"API - Title",
 		"API - HTTP Response Status",
 		"API - JSON Decode Error",
 		"API - GET Error",
-		"API - DOI",
-		"API - Title",
 	}
 
 	err := w.Write(header)
@@ -164,18 +165,19 @@ func processOutput(output <-chan Record, waitgroupOutput *sync.WaitGroup) {
 		}
 
 		for _, apiresponse := range record.APIResponses {
-			toCSVOutput := []string{strconv.FormatBool(apiresponse.APIResponseBody.IsOa),
+			toCSVOutput := []string{
+				record.Publication.ID,
+				record.Publication.Type,
 				strconv.FormatBool(artudisOA),
 				highestLevel,
-				record.Publication.ID,
-				apiresponse.APIResponseBody.BestOaLocation.URL,
+				strconv.FormatBool(apiresponse.APIResponseBody.IsOa),
 				apiresponse.APIResponseBody.BestOaLocation.Version,
-				record.Publication.Type,
+				apiresponse.APIResponseBody.Doi,
+				apiresponse.APIResponseBody.BestOaLocation.URL,
+				apiresponse.APIResponseBody.Title,
 				apiresponse.HTTPStatus,
 				apiresponse.JSONDecodeError,
 				apiresponse.GETError,
-				apiresponse.APIResponseBody.Doi,
-				apiresponse.APIResponseBody.Title,
 			}
 
 			err := w.Write(toCSVOutput)
