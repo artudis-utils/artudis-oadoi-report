@@ -94,8 +94,7 @@ func findFilesToProcess() []string {
 	}
 }
 
-func processFile(fileName string, waitgroupFiles *sync.WaitGroup) {
-	defer waitgroupFiles.Done()
+func processFile(fileName string) {
 	file, err := os.Open(fileName)
 	if err != nil {
 		log.Println(err)
@@ -112,10 +111,17 @@ func processFile(fileName string, waitgroupFiles *sync.WaitGroup) {
 
 	var waitgroupLines sync.WaitGroup
 	fileScanner := bufio.NewScanner(file)
+	buf := make([]byte, 0, 1024*1024)
+	fileScanner.Buffer(buf, 1024*1024*32)
 	for fileScanner.Scan() {
 		waitgroupLines.Add(1)
 		publicationBytes := append([]byte{}, fileScanner.Bytes()...)
 		go processPublication(publicationBytes, &waitgroupLines, ticketToHTTP, output)
+	}
+
+	err = fileScanner.Err()
+	if err != nil {
+		log.Fatalln(err)
 	}
 
 	var waitgroupOutput sync.WaitGroup
@@ -257,11 +263,8 @@ func main() {
 	if len(filesToProcess) == 0 {
 		log.Fatalln("Could not find any files to process.")
 	}
-	var waitgroupFiles sync.WaitGroup
 	for _, fileName := range filesToProcess {
-		waitgroupFiles.Add(1)
 		log.Println("Processing", fileName)
-		processFile(fileName, &waitgroupFiles)
+		processFile(fileName)
 	}
-	waitgroupFiles.Wait()
 }
