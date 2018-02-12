@@ -65,6 +65,7 @@ type APIResponseBody struct {
 }
 
 const OADOIURL string = "https://api.oadoi.org/v2/"
+const SHERPAURI string = "http://www.sherpa.ac.uk/romeo/issn/"
 
 var attachmentTypeToWeightMap = map[string]int{
 	"missing":             0,
@@ -153,6 +154,7 @@ func processOutput(output <-chan Record, waitgroupOutput *sync.WaitGroup) {
 		"API - HTTP Response Status",
 		"API - JSON Decode Error",
 		"API - GET Error",
+		"API - Sherpa Link",
 	}
 
 	err := w.Write(header)
@@ -184,6 +186,7 @@ func processOutput(output <-chan Record, waitgroupOutput *sync.WaitGroup) {
 				apiresponse.HTTPStatus,
 				apiresponse.JSONDecodeError,
 				apiresponse.GETError,
+				makeSherpaLink(apiresponse.JournalIssns),
 			}
 
 			err := w.Write(toCSVOutput)
@@ -250,6 +253,28 @@ func doAPIRequest(doi string, ticketToHTTP chan bool) APIResponse {
 	}
 
 	return apiResponse
+}
+
+func makeSherpaLink(issns string) string {
+	if issns == "" {
+		return ""
+	}
+
+	sherpaLinks := []string{}
+
+	issnsSplit := strings.Split(issns, ",")
+	for _, issn := range(issnsSplit) {
+		if issn != "" {
+			if string(issn[4]) == "-" && len(issn) == 9 {
+				sherpaLinks = append(sherpaLinks, SHERPAURI + issn + "/")
+			} else if len(issn) == 8 {
+				repaired := issn[0:4] + "-" + issn[4:8]
+				sherpaLinks = append(sherpaLinks, SHERPAURI + repaired + "/")
+			}
+		}
+	}
+
+	return strings.Join(sherpaLinks, ",")
 }
 
 func main() {
